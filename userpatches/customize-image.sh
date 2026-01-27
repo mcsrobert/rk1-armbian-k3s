@@ -17,37 +17,6 @@ LINUXFAMILY="$2"
 BOARD="$3"
 BUILD_DESKTOP="$4"
 
-
-set_armbian_env() {
-    local key="$1"
-    local value="$2"
-    local file="/boot/armbianEnv.txt"
-
-    if grep -q "^${key}=" "$file"; then
-        sed -i "s|^${key}=.*|${key}=${value}|" "$file"
-    else
-        echo "${key}=${value}" >> "$file"
-    fi
-}
-
-set_armbian_env "extraargs" "cgroup_memory=1 cgroup_enable=memory"
-set_armbian_env "overlays" "rockchip-npu"
-
-
-set_sshd_param() {
-    local key="$1"
-    local value="$2"
-    local file="/etc/ssh/sshd_config"
-
-    if grep -qE "^#?${key}" "$file"; then
-        sed -i -E "s|^#?${key}([[:space:]]+).*|${key} ${value}|" "$file"
-    else
-        echo "${key} ${value}" >> "$file"
-    fi
-}
-
-set_sshd_param "PermitRootLogin" "prohibit-password"
-set_sshd_param "PasswordAuthentication" "no"
-set_sshd_param "ChallengeResponseAuthentication" "no"
-set_sshd_param "KbdInteractiveAuthentication" "no"
-set_sshd_param "PermitEmptyPasswords" "no"
+if [ -d /tmp/overlay ]; then
+    cp -R /tmp/overlay/* /
+fi
