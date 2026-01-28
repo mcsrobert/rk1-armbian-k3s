@@ -3,6 +3,16 @@
   hosts: k3s_cluster
   become: true
 
+  handlers:
+
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    - name: Update initramfs
+      ansible.builtin.command: update-initramfs -u
+
   tasks:
 
     - name: Populate service facts
@@ -35,6 +45,20 @@
         state: present
         update_cache: yes
 
+    - name: Load dm_crypt module immediately
+      community.general.modprobe:
+        name: dm_crypt
+        state: present
+
+    - name: Ensure dm_crypt persists on reboot
+      ansible.builtin.copy:
+        content: "dm_crypt\n"
+        dest: /etc/modules-load.d/dm_crypt.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Update initramfs
+
     - name: Enable and start iscsid service
       ansible.builtin.service:
         name: iscsid
@@ -65,11 +89,8 @@
         - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
       notify: Restart SSH
 
-  handlers:
-    - name: Restart SSH
-      ansible.builtin.service:
-        name: sshd
-        state: restarted
+- name: Install RK3588 drivers
+  import_playbook: ./rk3588_drivers.yaml
 
 - name: Configure kube-vip
   import_playbook: ./kube-vip.yaml
