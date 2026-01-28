@@ -1,0 +1,4 @@
+---
+
+- name: Install k3s
+  import_playbook: k3s.orchestration.upgrade
