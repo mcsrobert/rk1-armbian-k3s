@@ -15,9 +15,6 @@
 
   tasks:
 
-    - name: Populate service facts
-      ansible.builtin.service_facts:
-
     - name: Verify we are booted from NVMe
       ansible.builtin.shell: findmnt -n -o SOURCE /
       register: root_drive
@@ -45,7 +42,13 @@
         state: present
         update_cache: yes
 
-    - name: Load dm_crypt module immediately
+    - name: Enable and start iscsid service
+      ansible.builtin.service:
+        name: iscsid
+        state: started
+        enabled: yes
+
+    - name: Load dm_crypt module
       community.general.modprobe:
         name: dm_crypt
         state: present
@@ -59,19 +62,22 @@
         mode: '0644'
       notify: Update initramfs
 
-    - name: Enable and start iscsid service
-      ansible.builtin.service:
-        name: iscsid
-        state: started
-        enabled: yes
+    - name: Check if multipathd is running and disable it
+      block:
 
-    - name: Disable and mask multipathd for Longhorn
-      ansible.builtin.systemd:
-        name: multipathd
-        state: stopped
-        enabled: no
-        masked: yes
-      when: "'multipathd.service' in services"
+        - name: Check if multipathd service exists
+          ansible.builtin.command: systemctl list-unit-files multipathd.service
+          register: multipathd_check
+          changed_when: false
+          failed_when: false
+
+        - name: Disable and mask multipathd for Longhorn
+          ansible.builtin.systemd:
+            name: multipathd
+            state: stopped
+            enabled: no
+            masked: yes
+          when: "'multipathd.service' in multipathd_check.stdout"
 
     - name: Harden SSH Configuration
       ansible.builtin.lineinfile:
@@ -88,6 +94,22 @@
         - { regexp: '^#?PermitEmptyPasswords', line: 'PermitEmptyPasswords no' }
         - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
       notify: Restart SSH
+
+    - name: Sync Ghostty terminfo
+      block:
+
+        - name: Get local Ghostty terminfo
+          ansible.builtin.command: infocmp -x xterm-ghostty
+          delegate_to: localhost
+          register: local_terminfo
+          become: false
+          run_once: true
+          changed_when: false
+
+        - name: Apply terminfo to remote server
+          ansible.builtin.shell: tic -x -
+          args:
+            stdin: "{{ local_terminfo.stdout }}"
 
 - name: Install RK3588 drivers
   import_playbook: ./rk3588_drivers.yaml

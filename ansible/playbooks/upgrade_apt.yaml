@@ -1,13 +1,10 @@
 ---
-- name: Configure kube-vip
-  import_playbook: ./kube-vip.yaml
-
 - name: Upgrade host packages
   hosts: k3s_cluster
   become: true
   serial: 1
   environment:
-    K8S_AUTH_KUBECONFIG: ~/.kube/config
+    K8S_AUTH_KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
   tasks:
 
@@ -24,38 +21,36 @@
         path: /var/run/reboot-required
       register: reboot_required_file
 
-    - name: Drain node before reboot
-      kubernetes.core.k8s_drain:
-        name: "{{ inventory_hostname }}"
-        state: drain
-        delete_options:
-          delete_emptydir_data: true
-          ignore_daemonsets: true
-          force: true
-          terminate_grace_period: 60
-          wait_timeout: 300
-          wait_sleep: 15
-        pod_selectors:
-          - app!=csi-attacher
-          - app!=csi-provisioner
-          - longhorn.io/component!=instance-manager
-      become: false
-      delegate_to: localhost
-      when: reboot_required_file.stat.exists
+    - name: Reboot when required
+      block:
 
-    - name: Reboot node for kernel updates
-      ansible.builtin.reboot:
-        msg: Reboot initiated by Ansible after package upgrades
-        connect_timeout: 5
-        reboot_timeout: 600
-        pre_reboot_delay: 0
-        post_reboot_delay: 30
-      when: reboot_required_file.stat.exists
+        - name: Drain node before reboot
+          kubernetes.core.k8s_drain:
+            name: "{{ inventory_hostname }}"
+            state: drain
+            delete_options:
+              delete_emptydir_data: true
+              ignore_daemonsets: true
+              force: true
+              terminate_grace_period: 60
+              wait_timeout: 300
+              wait_sleep: 15
+            pod_selectors:
+              - app!=csi-attacher
+              - app!=csi-provisioner
+              - longhorn.io/component!=instance-manager
 
-    - name: Uncordon node after reboot
-      kubernetes.core.k8s_drain:
-        name: "{{ inventory_hostname }}"
-        state: uncordon
-      become: false
-      delegate_to: localhost
+        - name: Reboot node for kernel updates
+          ansible.builtin.reboot:
+            msg: Reboot initiated by Ansible after package upgrades
+            connect_timeout: 5
+            reboot_timeout: 600
+            pre_reboot_delay: 0
+            post_reboot_delay: 30
+
+        - name: Uncordon node after reboot
+          kubernetes.core.k8s_drain:
+            name: "{{ inventory_hostname }}"
+            state: uncordon
+
       when: reboot_required_file.stat.exists
